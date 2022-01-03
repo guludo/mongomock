@@ -976,6 +976,28 @@ class _Parser(object):
                     if value not in result:
                         result.append(value)
             return result
+
+        if operator == '$setIntersection':
+            if not isinstance(values, (list, tuple)):
+                values = [values]
+            values = list(self.parse_many(values))
+            for v in values:
+                if not isinstance(v, list) and v is not None:
+                    raise OperationFailure(
+                        'All operands of $setIntersection must be arrays. '
+                        'One argument is of type: %s' % type(v)
+                    )
+            input_sets = []
+            for v in values:
+                if v is None:
+                    input_sets.append({})
+                else:
+                    input_sets.append({helpers.to_hashable(elem) for elem in v})
+            result = input_sets[0] if input_sets else set()
+            for s in input_sets[1:]:
+                result &= s
+            return [v.original for v in result]
+
         if operator == '$setEquals':
             set_values = [set(self.parse(value)) for value in values]
             for set1, set2 in itertools.combinations(set_values, 2):
