@@ -602,6 +602,31 @@ class _Parser(object):
 
             return None if None in parsed_list else list(itertools.chain.from_iterable(parsed_list))
 
+        if operator == '$map':
+            if not isinstance(value, dict):
+                raise OperationFailure('$map only supports an object as its argument')
+            extra_params = set(value) - {'input', 'as', 'in'}
+            if extra_params:
+                raise OperationFailure('Unrecognized parameter to $map: %s' % extra_params.pop())
+            missing_params = {'input', 'in'} - set(value)
+            if missing_params:
+                raise OperationFailure("Missing '%s' parameter to $map" % missing_params.pop())
+
+            input_array = self.parse(value['input'])
+            if not isinstance(input_array, list):
+                raise OperationFailure('input to $map must be an array not %s' % type(input_array))
+
+            fieldname = value.get('as', 'this')
+            in_expr = value['in']
+            return [
+                _Parser(
+                    self._doc_dict,
+                    dict(self._user_vars, **{fieldname: item}),
+                    ignore_missing_keys=self._ignore_missing_keys,
+                ).parse(in_expr)
+                for item in input_array
+            ]
+
         if operator == '$size':
             if isinstance(value, list):
                 if len(value) != 1:
