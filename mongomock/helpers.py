@@ -5,6 +5,7 @@ from packaging import version
 import re
 from six.moves.urllib_parse import unquote_plus
 from six import PY3, iteritems, raise_from, string_types
+import sys
 import time
 import warnings
 
@@ -13,12 +14,14 @@ import warnings
 # in this module but is made available for callers of this module.
 try:
     from bson import ObjectId  # pylint: disable=unused-import
+    from bson import SON
     from bson import Timestamp
     from pymongo import version as pymongo_version
     PYMONGO_VERSION = version.parse(pymongo_version)
     HAVE_PYMONGO = True
 except ImportError:
     from mongomock.object_id import ObjectId  # noqa
+    SON = None
     Timestamp = None
     PYMONGO_VERSION = None
     HAVE_PYMONGO = False
@@ -432,3 +435,71 @@ def to_long(value):
         global long  # pylint: disable=global-variable-undefined
         long = int
     return long(value)
+
+
+class _ToHashableParser(object):
+    ORDERED_TYPES = (OrderedDict, SON) if SON else (OrderedDict,)
+
+    def __init__(self, value):
+        self.__visited = set()
+        self.__root_value = value
+        self.__has_warned_ordered_dict = False
+
+    def parse(self):
+        return self.__parse(self.__root_value)
+
+    def __parse(self, value):
+        if id(value) in self.__visited:
+            raise RuntimeError('unexpected error: recursive structure detected')
+        self.__visited.add(id(value))
+
+        if isinstance(value, (list, tuple)):
+            hashable = (
+                'list',
+                tuple(self.__parse(v) for v in value)
+            )
+        elif isinstance(value, dict):
+            if (sys.version_info < (3, 7)
+                    and not isinstance(value, self.ORDERED_TYPES)
+                    and not self.__has_warned_ordered_dict):
+                warnings.warn(
+                    'not using collections.OrderedDict or bson.son.SON for '
+                    '(sub)documents used in operations that compare them with '
+                    'others might yield unexpected results in Python<3.7'
+                )
+                self.__has_warned_ordered_dict = True
+            hashable = ('dict', tuple(
+                (k, self.__parse(v)) for k, v in iteritems(value)
+            ))
+        else:
+            # We are trusting value is hashable already (int, float, etc)
+            hashable = ('other', value)
+        return ToHashableResult(hashable, value)
+
+
+class ToHashableResult(object):
+    def __init__(self, hashable, original):
+        self.hashable = hashable
+        self.original = original
+
+    def __hash__(self):
+        return hash(self.hashable)
+
+    def __repr__(self):
+        return repr(self.original)
+
+    def __eq__(self, other):
+        if not isinstance(other, ToHashableResult):
+            other = to_hashable(other)
+        return self.original == other.original
+
+
+def to_hashable(value):
+    """Convert a value to a representation that can be used as a hashable
+    object.
+
+    This function returns a ToHashableResult object, which can be used in
+    places where a hashable object is expected. The original object can be
+    retrived with the via the attribute "original".
+    """
+    return _ToHashableParser(value).parse()
