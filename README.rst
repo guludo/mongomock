@@ -1,5 +1,13 @@
 |travis| |pypi_version| |pypi_license| |pypi_wheel|
 
+.. attention::
+   This is a fork of the `original mongomock project`__. It has ``next`` as the
+   default branch, which contains patches sent to upstream as pull requests.
+   Expect it to be rebased frequently. See `<next.rst>`_ for more details.
+
+   __ https://github.com/mongomock/mongomock
+
+
 .. image:: https://codecov.io/gh/mongomock/mongomock/branch/develop/graph/badge.svg
   :target: https://codecov.io/gh/mongomock/mongomock
 
