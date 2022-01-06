@@ -1,0 +1,26 @@
+target next
+
+rebase next-base develop
+
+stage next next-base
+    # https://github.com/mongomock/mongomock/pull/737
+    rebase nx/set-operators develop
+
+    # https://github.com/mongomock/mongomock/pull/738
+    rebase nx/map develop
+
+    # https://github.com/mongomock/mongomock/pull/742
+    rebase nx/pipeline-in-update develop
+
+    rebase nx/type-number develop
+
+    stage nx/index-of-array-base develop
+    merge nx/index-of-array-base nx/map
+    merge nx/index-of-array-base nx/set-operators
+
+    # https://github.com/mongomock/mongomock/pull/739
+    rebase nx/index-of-array nx/index-of-array-base
+
+    merge next nx/index-of-array
+    merge next nx/pipeline-in-update
+    merge next nx/type-number
