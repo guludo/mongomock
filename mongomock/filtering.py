@@ -22,6 +22,11 @@ except ImportError:
     DBRef = None
     _RE_TYPES = (RE_TYPE,)
 
+try:
+    from bson.decimal128 import Decimal128
+except ImportError:
+    Decimal128 = None
+
 _TOP_LEVEL_OPERATORS = {'$expr', '$text', '$where', '$jsonSchema'}
 
 
@@ -410,12 +415,31 @@ def _list_expand(f, negative=False):
     return func
 
 
-def _type_op(doc_val, search_val):
+def _type_op(doc_val, search_val, in_array=False):
     if search_val not in TYPE_MAP:
         raise OperationFailure('%r is not a valid $type' % search_val)
     elif TYPE_MAP[search_val] is None:
         raise NotImplementedError('%s is a valid $type but not implemented' % search_val)
-    return isinstance(doc_val, TYPE_MAP[search_val])
+
+    spec = TYPE_MAP[search_val]
+    if not isinstance(spec, tuple):
+        spec = (spec,)
+
+    for t in spec:
+        if isinstance(t, type) and isinstance(doc_val, t):
+            return True
+        if callable(t):
+            if isinstance(t, type):
+                if isinstance(doc_val, t):
+                    return True
+            elif t(doc_val):
+                return True
+        if isinstance(t, str) and _type_op(doc_val, t, in_array):
+            return True
+
+    if isinstance(doc_val, list) and not in_array:
+        return any(_type_op(item, search_val, True) for item in doc_val)
+    return False
 
 
 def _combine_regex_options(search):
@@ -488,11 +512,15 @@ TYPE_MAP = {
     'javascript': None,
     'symbol': None,
     'javascriptWithScope': None,
-    'int': (int,),
+    'int': lambda v: (
+        isinstance(v, int) and not isinstance(v, bool) and v.bit_length() <= 32
+    ),
     'timestamp': None,
-    'long': (float,),
-    'decimal': (float,),
-    'number': (int, float),
+    'long': lambda v: (
+        isinstance(v, int) and not isinstance(v, bool) and v.bit_length() > 32
+    ),
+    'decimal': Decimal128,
+    'number': ('int', 'long', 'double', 'decimal'),
     'minKey': None,
     'maxKey': None,
 }
